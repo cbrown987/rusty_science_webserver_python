@@ -1,0 +1,98 @@
+# playbook.yml
+---
+- name: Deploy Rust Runner Application to EC2
+  hosts: ec2_instances
+  become: yes
+  vars:
+    project_repo: "https://github.com/your_username/your_rust_runner_repo.git" # CHANGE THIS (or comment out if copying files)
+    project_dest: "/opt/rust_runner_app"
+    sandbox_image_name: "rust-runner-sandbox"
+    sandbox_image_tag: "latest"
+    app_image_name: "rust-flask-app"
+    app_image_tag: "latest"
+    app_container_name: "rust-runner-service"
+    app_port: "5000"
+    docker_user: "{{ ansible_user }}"
+
+  tasks:
+    - name: Update apt cache (Debian/Ubuntu)
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Install prerequisites (Docker, Git, Python pip)
+      ansible.builtin.package:
+        name:
+          - docker.io
+          - git
+          - python3-pip
+        state: present
+
+    - name: Ensure pip docker module is installed
+      ansible.builtin.pip:
+        name: docker
+        state: present
+
+    - name: Ensure Docker service is started and enabled
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add user {{ docker_user }} to the docker group
+      ansible.builtin.user:
+        name: "{{ docker_user }}"
+        groups: docker
+        append: yes
+      # Note: This change typically requires a logout/login to take effect for the user's shell.
+      # However, Ansible tasks using 'become: yes' should still work with Docker.
+
+    - name: Clone application repository
+      ansible.builtin.git:
+        repo: "{{ project_repo }}"
+        dest: "{{ project_dest }}"
+        version: main
+        force: yes
+
+    - name: Build the sandbox Docker image
+      community.docker.docker_image:
+        name: "{{ sandbox_image_name }}:{{ sandbox_image_tag }}"
+        build:
+          path: "{{ project_dest }}" #
+          dockerfile: "{{ project_dest }}/Dockerfile.sandbox"
+        source: build
+        state: present
+      tags:
+        - build
+
+    - name: Build the main application Docker image
+      community.docker.docker_image:
+        name: "{{ app_image_name }}:{{ app_image_tag }}"
+        build:
+          path: "{{ project_dest }}" # Build context directory
+          dockerfile: "{{ project_dest }}/Dockerfile" # Path to the main Dockerfile
+        source: build
+        state: present
+      tags:
+        - build
+
+    - name: Stop and remove existing application container if it exists
+      community.docker.docker_container:
+        name: "{{ app_container_name }}"
+        state: absent
+      ignore_errors: yes # Don't fail if the container doesn't exist
+
+    - name: Run the application container
+      community.docker.docker_container:
+        name: "{{ app_container_name }}"
+        image: "{{ app_image_name }}:{{ app_image_tag }}"
+        state: started
+        restart_policy: always # Keep the container running
+        ports:
+          - "{{ app_port }}:{{ app_port }}" # Expose app port (e.g., 5000:5000)
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock # Mount Docker socket for sandboxing
+        detach: yes # Run in the background
+      tags:
+        - run

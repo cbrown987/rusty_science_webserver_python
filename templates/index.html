@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust Runner</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        textarea { width: 95%; height: 300px; font-family: monospace; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        pre { background-color: #f4f4f4; border: 1px solid #ddd; padding: 10px; white-space: pre-wrap; word-wrap: break-word; margin-top: 5px; }
+        .output-container { margin-top: 20px; }
+        .error { color: red; font-weight: bold; }
+        .stderr { color: orange; }
+        h3 { margin-bottom: 5px; }
+        #loading { display: none; margin-left: 10px; color: #555; }
+    </style>
+</head>
+<body>
+
+    <h1>Rust Code Runner</h1>
+    <p><strong>Warning:</strong> Running arbitrary code can be dangerous. Use with caution.</p>
+
+    <textarea id="rustCode" spellcheck="false">{{ initial_code }}</textarea>
+    <br>
+    <button id="runButton">Run Code</button>
+    <span id="loading">Running...</span>
+
+    <div class="output-container">
+        <h3>Compilation Output:</h3>
+        <pre id="compileOutput">-- Compiler output will appear here --</pre>
+
+        <h3>Execution Output (stdout):</h3>
+        <pre id="runOutput">-- Program output will appear here --</pre>
+
+        <h3>Execution Errors (stderr):</h3>
+        <pre id="runStderr" class="stderr">-- Program errors will appear here --</pre>
+
+        <h3>Server/Execution Errors:</h3>
+        <pre id="errorOutput" class="error">-- System/Compilation errors will appear here --</pre>
+    </div>
+
+    <script>
+        const runButton = document.getElementById('runButton');
+        const rustCodeTextArea = document.getElementById('rustCode');
+        const compileOutputPre = document.getElementById('compileOutput');
+        const runOutputPre = document.getElementById('runOutput');
+        const runStderrPre = document.getElementById('runStderr');
+        const errorOutputPre = document.getElementById('errorOutput');
+        const loadingIndicator = document.getElementById('loading');
+
+        runButton.addEventListener('click', async () => {
+            const code = rustCodeTextArea.value;
+
+            // Clear previous outputs and show loading
+            compileOutputPre.textContent = '';
+            runOutputPre.textContent = '';
+            runStderrPre.textContent = '';
+            errorOutputPre.textContent = '';
+            loadingIndicator.style.display = 'inline';
+            runButton.disabled = true;
+
+            try {
+                const response = await fetch('/execute', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ code: code }) // Send code in JSON body
+                });
+
+                // Always hide loading and re-enable button regardless of success/failure
+                loadingIndicator.style.display = 'none';
+                runButton.disabled = false;
+
+                if (!response.ok) {
+                    // Handle HTTP errors (e.g., 400, 500)
+                    let errorText = `HTTP Error: ${response.status} ${response.statusText}`;
+                    try {
+                         // Try to get more specific error from JSON response body
+                         const errorJson = await response.json();
+                         errorText += `\nDetails: ${errorJson.error || 'No details provided.'}`;
+                    } catch (e) { /* Ignore if response body isn't valid JSON */ }
+                    errorOutputPre.textContent = errorText;
+                    return; // Stop processing
+                }
+
+                const result = await response.json();
+
+                // Display results in respective areas
+                compileOutputPre.textContent = result.compile_stdout || '(No compiler stdout)';
+                // Append compiler stderr to the main error block for visibility
+                if (result.compile_stderr) {
+                     errorOutputPre.textContent += `Compiler stderr:\n${result.compile_stderr}\n\n`;
+                }
+
+                runOutputPre.textContent = result.run_stdout || '(No program stdout)';
+                runStderrPre.textContent = result.run_stderr || '(No program stderr)';
+
+                // Display any top-level errors (compilation fail, runtime fail, timeout, etc.)
+                if (result.error) {
+                    errorOutputPre.textContent += `Error: ${result.error}`;
+                } else if (!result.compile_stderr && !result.run_stderr && !errorOutputPre.textContent) {
+                     // If no errors anywhere else, clear the error block
+                     errorOutputPre.textContent = '(No errors)';
+                }
+
+
+            } catch (error) {
+                // Handle network errors or issues with the fetch itself
+                console.error('Fetch error:', error);
+                errorOutputPre.textContent = `Network or frontend script error: ${error.message}`;
+                loadingIndicator.style.display = 'none';
+                runButton.disabled = false;
+            }
+        });
+    </script>
+
+</body>
+</html>

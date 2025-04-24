@@ -1,0 +1,21 @@
+FROM rust:1.78-slim
+
+WORKDIR /opt/crate-cache
+
+RUN cargo new --bin dummy_project
+WORKDIR /opt/crate-cache/dummy_project
+
+RUN echo '[dependencies]' >> Cargo.toml && \
+    echo 'rusty_science = "0.1.1"' >> Cargo.toml
+
+
+RUN cargo fetch
+
+WORKDIR /sandbox
+
+RUN useradd -m -u 1001 sandboxuser && chown -R sandboxuser:sandboxuser /sandbox && chown -R sandboxuser:sandboxuser /opt/crate-cache
+USER sandboxuser
+
+RUN rm -rf /opt/crate-cache/dummy_project/src /opt/crate-cache/dummy_project/Cargo.toml
+
+WORKDIR /sandbox
