@@ -5,8 +5,7 @@ WORKDIR /opt/crate-cache
 RUN cargo new --bin dummy_project
 WORKDIR /opt/crate-cache/dummy_project
 
-RUN echo '[dependencies]' >> Cargo.toml && \
-    echo 'rusty_science = "0.1.1"' >> Cargo.toml
+RUN echo 'rusty_science = "0.1.1"' >> Cargo.toml
 
 
 RUN cargo fetch
