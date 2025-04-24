@@ -77,6 +77,27 @@
         state: absent
       ignore_errors: yes
 
+    - name: Create build context directory on EC2 instance
+      ansible.builtin.file:
+        path: /tmp/build_context/rust-flask-app # Or your preferred path
+        state: directory
+        mode: '0755'
+
+    - name: Copy application files to EC2 build context
+      ansible.builtin.copy:
+        src: ../
+        dest: /tmp/build_context/rust-flask-app/
+
+    - name: Build the main Flask application image using uv
+      community.docker.docker_image:
+        name: rust-flask-app
+        build:
+          path: /tmp/build_context/rust-flask-app/
+          pull: yes
+        source: build
+        state: present
+      become: yes
+
     - name: Run the application container
       community.docker.docker_container:
         name: "{{ app_container_name }}"
