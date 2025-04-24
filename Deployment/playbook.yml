@@ -4,7 +4,7 @@
   hosts: ec2_instances
   become: yes
   vars:
-    project_repo: "https://github.com/your_username/your_rust_runner_repo.git" # CHANGE THIS (or comment out if copying files)
+    project_repo: "https://github.com/cbrown987/rusty_science_webserver_python"
     project_dest: "/opt/rust_runner_app"
     sandbox_image_name: "rust-runner-sandbox"
     sandbox_image_tag: "latest"
@@ -15,7 +15,7 @@
     docker_user: "{{ ansible_user }}"
 
   tasks:
-    - name: Update apt cache (Debian/Ubuntu)
+    - name: Update apt cache
       ansible.builtin.apt:
         update_cache: yes
         cache_valid_time: 3600
@@ -27,11 +27,7 @@
           - docker.io
           - git
           - python3-pip
-        state: present
-
-    - name: Ensure pip docker module is installed
-      ansible.builtin.pip:
-        name: docker
+          - python3-docker
         state: present
 
     - name: Ensure Docker service is started and enabled
@@ -45,14 +41,12 @@
         name: "{{ docker_user }}"
         groups: docker
         append: yes
-      # Note: This change typically requires a logout/login to take effect for the user's shell.
-      # However, Ansible tasks using 'become: yes' should still work with Docker.
 
     - name: Clone application repository
       ansible.builtin.git:
         repo: "{{ project_repo }}"
         dest: "{{ project_dest }}"
-        version: main
+        version: master
         force: yes
 
     - name: Build the sandbox Docker image
@@ -81,7 +75,7 @@
       community.docker.docker_container:
         name: "{{ app_container_name }}"
         state: absent
-      ignore_errors: yes # Don't fail if the container doesn't exist
+      ignore_errors: yes
 
     - name: Run the application container
       community.docker.docker_container:
